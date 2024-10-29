@@ -1,0 +1,121 @@
+import ipaddress
+
+def prompt_for_ip_and_subnet():
+    # Prompt user for IP address
+    ip_input = input("Enter an IP address: ")
+
+    # Validate the IP address
+    try:
+        ip_obj = ipaddress.ip_address(ip_input)
+    except ValueError:
+        print("Invalid IP address.")
+        return None, None
+
+    # Prompt user for subnet mask
+    subnet_input = input("Enter a subnet (CIDR or dotted decimal), or leave blank for classful subnet: ")
+    if not subnet_input:
+        # Default to classful subnet
+        if ip_obj.version == 4:
+            if ip_input.startswith("10."):
+                subnet_input = "255.0.0.0"
+            elif ip_input.startswith("172.") and 16 <= int(ip_input.split(".")[1]) <= 31:
+                subnet_input = "255.240.0.0"
+            elif ip_input.startswith("192.168."):
+                subnet_input = "255.255.0.0"
+            else:
+                first_octet = int(ip_input.split(".")[0])
+                subnet_input = "255.0.0.0" if first_octet <= 126 else "255.255.0.0" if first_octet <= 191 else "255.255.255.0"
+        else:
+            print("Defaulting to /64 for IPv6")
+            subnet_input = "/64"
+
+    return ip_input, subnet_input
+
+
+def convert_to_cidr(subnet_input):
+    # Try to convert to CIDR notation
+    if "/" in subnet_input:
+        # Already in CIDR format
+        return subnet_input
+    else:
+        # Convert dotted decimal to CIDR
+        try:
+            net = ipaddress.ip_network(f"0.0.0.0/{subnet_input}", strict=False)
+            return f"/{net.prefixlen}"
+        except ValueError:
+            print("Invalid subnet.")
+            return None
+
+
+def calculate_subnet_details(ip, subnet):
+    # Create a network object
+    try:
+        network = ipaddress.ip_network(f"{ip}{subnet}", strict=False)
+        return network
+    except ValueError:
+        print("Invalid combination of IP and subnet.")
+        return None
+
+
+def prompt_for_second_subnet():
+    return input("Enter a second subnet (CIDR or dotted decimal), or press enter to skip: ")
+
+
+def main():
+    # Prompt for IP address and subnet
+    ip, subnet = prompt_for_ip_and_subnet()
+    if ip is None or subnet is None:
+        return
+
+    # Convert subnet to CIDR
+    cidr = convert_to_cidr(subnet)
+    if cidr is None:
+        return
+
+    # Calculate network details
+    network = calculate_subnet_details(ip, cidr)
+    if network is None:
+        return
+
+    # Print network summary
+    print(f"\nIP: {ip}")
+    print(f"Subnet: {cidr}")
+    print(f"Network address: {network.network_address}")
+    print(f"Broadcast address: {network.broadcast_address}")
+    print(f"Total hosts: {network.num_addresses - 2}")
+    print(f"Subnet mask: {network.netmask}\n")
+
+    # Prompt for a second subnet
+    second_subnet = prompt_for_second_subnet()
+    if second_subnet:
+        second_cidr = convert_to_cidr(second_subnet)
+        if second_cidr:
+            second_network = calculate_subnet_details(ip, second_cidr)
+            if second_network:
+                print(f"\nSecond Subnet Details:")
+                print(f"IP: {ip}")
+                print(f"Subnet: {second_cidr}")
+                print(f"Network address: {second_network.network_address}")
+                print(f"Broadcast address: {second_network.broadcast_address}")
+                print(f"Total hosts: {second_network.num_addresses - 2}")
+                print(f"Subnet mask: {second_network.netmask}")
+
+                # Calculate and print smaller subnets
+                subnets = list(network.subnets(new_prefix=second_network.prefixlen))
+                print(f"\nSubnets for the {second_cidr} prefix inside {cidr}:")
+
+                subnet_count = 0
+                for subnet in subnets:
+                    print(f"Subnet: {subnet}, Hosts: {subnet.num_addresses - 2}")
+                    subnet_count += 1
+
+                # Summary
+                print(f"\nSummary:")
+                print(f"Original Subnet ({cidr}): {network.num_addresses - 2} hosts.")
+                print(f"Second Subnet ({second_cidr}): {second_network.num_addresses - 2} hosts.")
+                print(f"Number of subnets created within {cidr}: {subnet_count}")
+                print(f"Total Hosts across all subnets: {sum([subnet.num_addresses - 2 for subnet in subnets])}")
+
+
+if __name__ == "__main__":
+    main()
